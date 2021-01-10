@@ -1,0 +1,146 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width,initial-scale=1"><title>深度解析DomDiff算法（一） | 小六先生</title><meta name="description" content="最近公司内部正好要准备技术分享，所以花了大概三个月的时间去学习关于domdiff算法的知识，文章会结合源码和图片尽量的深入浅出，把整个过程说的明白、讲的清晰。  文章分三篇： 认识virtual dom &amp;&amp; diff算法演进史 react的dom diff策略 vue的dom diff策略什么是virtual dom？ 简单一句话，就是用javascript模拟出来的dom对象"><meta name="keywords" content="小六、博客、前端、有赞"><meta name="author" content="小六"><meta name="copyright" content="小六"><meta name="format-detection" content="telephone=no"><link rel="shortcut icon" href="/img/myAvatar.jpeg"><meta http-equiv="Cache-Control" content="no-transform"><meta http-equiv="Cache-Control" content="no-siteapp"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="dns-prefetch" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="crossorigin"/><link rel="dns-prefetch" href="https://fonts.googleapis.com"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="dns-prefetch" href="//busuanzi.ibruce.info"/><meta name="twitter:card" content="summary"><meta name="twitter:title" content="深度解析DomDiff算法（一）"><meta name="twitter:description" content="最近公司内部正好要准备技术分享，所以花了大概三个月的时间去学习关于domdiff算法的知识，文章会结合源码和图片尽量的深入浅出，把整个过程说的明白、讲的清晰。  文章分三篇： 认识virtual dom &amp;&amp; diff算法演进史 react的dom diff策略 vue的dom diff策略什么是virtual dom？ 简单一句话，就是用javascript模拟出来的dom对象"><meta name="twitter:image" content="https://img-blog.csdnimg.cn/20201103195329140.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dlaXhpbl8zOTMyNzg4Mw==,size_16,color_FFFFFF,t_70"><meta property="og:type" content="article"><meta property="og:title" content="深度解析DomDiff算法（一）"><meta property="og:url" content="https://xiaoliu.info/technology/dom_diff_one/"><meta property="og:site_name" content="小六先生"><meta property="og:description" content="最近公司内部正好要准备技术分享，所以花了大概三个月的时间去学习关于domdiff算法的知识，文章会结合源码和图片尽量的深入浅出，把整个过程说的明白、讲的清晰。  文章分三篇： 认识virtual dom &amp;&amp; diff算法演进史 react的dom diff策略 vue的dom diff策略什么是virtual dom？ 简单一句话，就是用javascript模拟出来的dom对象"><meta property="og:image" content="https://img-blog.csdnimg.cn/20201103195329140.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dlaXhpbl8zOTMyNzg4Mw==,size_16,color_FFFFFF,t_70"><meta property="article:published_time" content="2020-09-03T11:44:48.000Z"><meta property="article:modified_time" content="2020-11-03T12:17:30.126Z"><script src="https://cdn.jsdelivr.net/npm/js-cookie/dist/js.cookie.min.js"></script><script>var autoChangeMode = '1'
+var t = Cookies.get("theme")
+if (autoChangeMode == '1'){
+  var isDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches
+  var isLightMode = window.matchMedia("(prefers-color-scheme: light)").matches
+  var isNotSpecified = window.matchMedia("(prefers-color-scheme: no-preference)").matches
+  var hasNoSupport = !isDarkMode && !isLightMode && !isNotSpecified
+
+  if (t === undefined){
+    if (isLightMode) activateLightMode()
+    else if (isDarkMode) activateDarkMode()
+    else if (isNotSpecified || hasNoSupport){
+      console.log('You specified no preference for a color scheme or your browser does not support it. I Schedule dark mode during night time.')
+      var now = new Date()
+      var hour = now.getHours()
+      var isNight = hour < 6 || hour >= 18
+      isNight ? activateDarkMode() : activateLightMode()
+  }
+  } else if (t == 'light') activateLightMode()
+  else activateDarkMode()
+
+} else if (autoChangeMode == '2'){
+  now = new Date();
+  hour = now.getHours();
+  isNight = hour < 6 || hour >= 18
+  if(t === undefined) isNight? activateDarkMode() : activateLightMode()
+  else if (t === 'light') activateLightMode()
+  else activateDarkMode() 
+} else {
+  if ( t == 'dark' ) activateDarkMode()
+  else if ( t == 'light') activateLightMode()
+}
+
+function activateDarkMode(){
+  document.documentElement.setAttribute('data-theme', 'dark')
+  if (document.querySelector('meta[name="theme-color"]') !== null){
+    document.querySelector('meta[name="theme-color"]').setAttribute('content','#000')
+  }
+}
+function activateLightMode(){
+  document.documentElement.setAttribute('data-theme', 'light')
+  if (document.querySelector('meta[name="theme-color"]') !== null){
+  document.querySelector('meta[name="theme-color"]').setAttribute('content','#fff')
+  }
+}</script><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@latest/css/font-awesome.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/fancybox@latest/dist/jquery.fancybox.min.css"><link rel="canonical" href="https://xiaoliu.info/technology/dom_diff_one/"><link rel="prev" title="深度解析DomDiff算法（二）" href="https://xiaoliu.info/technology/dom_diff_two/"><link rel="next" title="本期主题-nike dunk sb &amp;&amp; nike blazer" href="https://xiaoliu.info/fashion/dunk/"><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Titillium+Web"><script>var GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: undefined,
+  localSearch: undefined,
+  translate: {"defaultEncoding":2,"translateDelay":0,"cookieDomain":"https://xxx/","msgToTraditionalChinese":"簡","msgToSimplifiedChinese":"簡"},
+  copy: {
+    success: '复制成功',
+    error: '复制错误',
+    noSupport: '浏览器不支持'
+  },
+  bookmark: {
+    message_prev: '按',
+    message_next: '键将本页加入书签'
+  },
+  runtime_unit: '天',
+  runtime: true,
+  copyright: undefined,
+  ClickShowText: undefined,
+  medium_zoom: false,
+  fancybox: true,
+  Snackbar: undefined,
+  baiduPush: false,
+  highlightCopy: true,
+  highlightLang: true,
+  highlightShrink: 'false',
+  isFontAwesomeV5: false,
+  isPhotoFigcaption: false,
+  islazyload: false,
+  isanchor: false
+  
+}</script><script>var GLOBAL_CONFIG_SITE = { 
+  isPost: true,
+  isHome: false,
+  isSidebar: true  
+  }</script><noscript><style>
+#page-header {
+  opacity: 1
+}
+.justified-gallery img{
+  opacity: 1
+}
+</style></noscript><meta name="generator" content="Hexo 4.2.1"></head><body><div id="mobile-sidebar"><div id="menu_mask"></div><div id="mobile-sidebar-menus"><div class="mobile_author_icon"><img class="avatar-img" src="/img/myAvatar.jpeg" onerror="onerror=null;src='/img/friend_404.gif'" alt="avatar"/></div><div class="mobile_post_data"><div class="mobile_data_item is-center"><div class="mobile_data_link"><a href="/archives/"><div class="headline">文章</div><div class="length_num">14</div></a></div></div><div class="mobile_data_item is-center">     <div class="mobile_data_link"><a href="/categories/"><div class="headline">分类</div><div class="length_num">6</div></a></div></div></div><hr/><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fa fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fa fa-archive"></i><span> 类别</span></a></div><div class="menus_item"><a class="site-page"><span> 关于</span><i class="fa fa-chevron-down menus-expand" aria-hidden="true"></i></a><ul class="menus_item_child"><li><a class="site-page" href="/about/blog"><i class="fa-fw fa fa-link"></i><span> 关于博客</span></a></li><li><a class="site-page" href="/about/myself"><i class="fa-fw fa fa-link"></i><span> 关于我</span></a></li></ul></div><div class="menus_item"><a class="site-page"><span> 兴趣分享</span><i class="fa fa-chevron-down menus-expand" aria-hidden="true"></i></a><ul class="menus_item_child"><li><a class="site-page" href="/fashion/"><i class="fa-fw fa fa-music"></i><span> 时尚</span></a></li><li><a class="site-page" href="/categories/%E9%9F%B3%E4%B9%90/"><i class="fa-fw fa fa-music"></i><span> 音乐</span></a></li></ul></div></div></div></div><i class="fa fa-arrow-right on" id="toggle-sidebar" aria-hidden="true">     </i><div id="sidebar"><div class="sidebar-toc"><div class="sidebar-toc__title">目录</div><div class="sidebar-toc__progress"><span class="progress-notice">你已经读了</span><span class="progress-num">0</span><span class="progress-percentage">%</span><div class="sidebar-toc__progress-bar">     </div></div><div class="sidebar-toc__content"><ol class="toc"><li class="toc-item toc-level-3"><a class="toc-link" href="#文章分三篇："><span class="toc-number">1.</span> <span class="toc-text">文章分三篇：</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#什么是virtual-dom？"><span class="toc-number">2.</span> <span class="toc-text">什么是virtual dom？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#为什么要有virtual-dom？"><span class="toc-number">3.</span> <span class="toc-text">为什么要有virtual dom？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#dom-diff算法是什么？"><span class="toc-number">4.</span> <span class="toc-text">dom diff算法是什么？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#dom-diff算法演进史"><span class="toc-number">5.</span> <span class="toc-text">dom diff算法演进史</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#传统diff算法"><span class="toc-number">6.</span> <span class="toc-text">传统diff算法</span></a></li></ol></div></div></div><div id="body-wrap"><div class="post-bg" id="nav" style="background-image: url(https://img-blog.csdnimg.cn/20201103195329140.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dlaXhpbl8zOTMyNzg4Mw==,size_16,color_FFFFFF,t_70)"><div id="page-header"><span class="pull_left" id="blog_name"><a class="blog_title" id="site-name" href="/">小六先生</a></span><span class="pull_right menus"><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fa fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fa fa-archive"></i><span> 类别</span></a></div><div class="menus_item"><a class="site-page"><span> 关于</span><i class="fa fa-chevron-down menus-expand" aria-hidden="true"></i></a><ul class="menus_item_child"><li><a class="site-page" href="/about/blog"><i class="fa-fw fa fa-link"></i><span> 关于博客</span></a></li><li><a class="site-page" href="/about/myself"><i class="fa-fw fa fa-link"></i><span> 关于我</span></a></li></ul></div><div class="menus_item"><a class="site-page"><span> 兴趣分享</span><i class="fa fa-chevron-down menus-expand" aria-hidden="true"></i></a><ul class="menus_item_child"><li><a class="site-page" href="/fashion/"><i class="fa-fw fa fa-music"></i><span> 时尚</span></a></li><li><a class="site-page" href="/categories/%E9%9F%B3%E4%B9%90/"><i class="fa-fw fa fa-music"></i><span> 音乐</span></a></li></ul></div></div><span class="toggle-menu close"><a class="site-page"><i class="fa fa-bars fa-fw" aria-hidden="true"></i></a></span></span></div><div id="post-info"><div id="post-title"><div class="posttitle">深度解析DomDiff算法（一）</div></div><div id="post-meta"><div class="meta-firstline"><time class="post-meta__date"><span class="post-meta__date-created" title="发表于 2020-09-03 19:44:48"><i class="fa fa-calendar" aria-hidden="true"></i> 发表于 2020-09-03</span><span class="post-meta__separator">|</span><span class="post-meta__date-updated" title="更新于 2020-11-03 20:17:30"><i class="fa fa-history" aria-hidden="true"></i> 更新于 2020-11-03</span></time><span class="post-meta__categories"><span class="post-meta__separator">|</span><i class="fa fa-inbox post-meta__icon" aria-hidden="true"></i><a class="post-meta__categories" href="/categories/%E6%8A%80%E6%9C%AF/">技术</a></span></div><div class="meta-secondline"> </div><div class="meta-thirdline"><span class="post-meta-pv-cv"><i class="fa fa-eye post-meta__icon" aria-hidden="true"> </i><span>阅读量:</span><span id="busuanzi_value_page_pv"></span></span><span class="post-meta-commentcount"></span></div></div></div></div><main class="layout_post" id="content-inner"><article id="post"><div class="post-content" id="article-container"><blockquote>
+<p>最近公司内部正好要准备技术分享，所以花了大概三个月的时间去学习关于domdiff算法的知识，文章会结合源码和图片尽量的深入浅出，把整个过程说的明白、讲的清晰。</p>
+</blockquote>
+<h3 id="文章分三篇："><a href="#文章分三篇：" class="headerlink" title="文章分三篇："></a>文章分三篇：</h3><ul>
+<li>认识virtual dom &amp;&amp; diff算法演进史</li>
+<li>react的dom diff策略</li>
+<li>vue的dom diff策略<h3 id="什么是virtual-dom？"><a href="#什么是virtual-dom？" class="headerlink" title="什么是virtual dom？"></a>什么是virtual dom？</h3><blockquote>
+<p>简单一句话，就是用javascript模拟出来的dom对象</p>
+</blockquote>
+<h3 id="为什么要有virtual-dom？"><a href="#为什么要有virtual-dom？" class="headerlink" title="为什么要有virtual dom？"></a>为什么要有virtual dom？</h3><blockquote>
+<p>1、实际应用中会频繁操作dom节点<br>2、操作dom节点的成本很高（jquery时代），每次操作会导致页面的重绘和重排<br>3、而单纯操作js的成本很低（v8引擎），如果能利用js从而有效减少重绘重排的次数，那么我们页面性能会大幅度提升</p>
+</blockquote>
+<h3 id="dom-diff算法是什么？"><a href="#dom-diff算法是什么？" class="headerlink" title="dom diff算法是什么？"></a>dom diff算法是什么？</h3><blockquote>
+<p>因为有了vdom，那怎么样才能减少节点操作的次数，diff算法就应运而生了。它的核心功能就是对比操作前后两个dom树和节点的异同，将差异记录到差异patch队列中最后将更新一步到位。整个diif流程分为三步，如下图，patch就是将记录的差异队列同步到真实dom的过程。</p>
+</blockquote>
+<img src="https://img-blog.csdnimg.cn/20201009203443629.png" alt="在这里插入图片描述"><h3 id="dom-diff算法演进史"><a href="#dom-diff算法演进史" class="headerlink" title="dom diff算法演进史"></a>dom diff算法演进史</h3><blockquote>
+<p>有伙伴想做深入研究的话可以去看看每种算法的源码，我们核心讲解vue和react的diff实现，相关链接在文章末尾，这里要强调一点的是我们目前主流前端框架的diff算法都是在snabbdom.js基础上优化来的。 </p>
+</blockquote>
+<img src="https://img-blog.csdnimg.cn/20201009205030646.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dlaXhpbl8zOTMyNzg4Mw==,size_16,color_FFFFFF,t_70#pic_center" alt="在这里插入图片描述"><h3 id="传统diff算法"><a href="#传统diff算法" class="headerlink" title="传统diff算法"></a>传统diff算法</h3><blockquote>
+<p>传统diff算法就是将新旧两棵树的节点依次进行对比，然后进行dom树的更新</p>
+</blockquote>
+<img src="https://img-blog.csdnimg.cn/2020100921061098.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dlaXhpbl8zOTMyNzg4Mw==,size_16,color_FFFFFF,t_70#pic_center" alt="在这里插入图片描述"></li>
+</ul>
+<blockquote>
+<p>上图所示，传统diff算法时间复杂度为O（n的三次方），原因如下，假定新旧树的节点数目都为n：<br>    1、新dom树中某一个节点和旧树所有节点依次遍历比较，复杂度为O（n）<br>    2、新dom总共n个节点，每个节点遍历n次，复杂度为O（n）<br>    3、遍历完成发现旧dom中的某个节点被删除/添加/更新，这里需要进行最小距离转换（transform cost）， 时间复杂度均为O（n）。<br>    这里严格来讲复杂度其实是O（m<em>（1+logm</em>n）），但是我们假定这里的前提是m=n<br>    4、综上，复杂度变为O（n<em>n</em>n）</p>
+</blockquote>
+<blockquote>
+<p>前两个n的复杂度很好理解，最后的最小转换方式的复杂度怎么算出来的呢？这里涉及到了一个叫做最小编辑距离算法，如果深入讲解的话又是万字长文。一篇有参考性的文章，有兴趣的伙伴可以去研究：<a href="https://www.zhihu.com/question/66851503" target="_blank" rel="noopener">https://www.zhihu.com/question/66851503</a></p>
+</blockquote>
+<p>参考文章链接：</p>
+<p><a href="https://github.com/joelrich/citojs" target="_blank" rel="noopener">https://github.com/joelrich/citojs</a>  【cito.js】<br><a href="https://github.com/snabbdom/snabbdom/blob/v0.7.3/src/snabbdom.ts#L179" target="_blank" rel="noopener">https://github.com/snabbdom/snabbdom/blob/v0.7.3/src/snabbdom.ts#L179</a>【snabbdom.js】</p>
+</div><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">文章作者: </span><span class="post-copyright-info"><a href="mailto:undefined">小六</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">文章链接: </span><span class="post-copyright-info"><a href="https://xiaoliu.info/technology/dom_diff_one/">https://xiaoliu.info/technology/dom_diff_one/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来自 <a href="https://xiaoliu.info" target="_blank">小六先生</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"></div><div class="post_share"><div class="social-share" data-image="https://timgsa.baidu.com/timg?image&amp;quality=80&amp;size=b9999_10000&amp;sec=1592332110506&amp;di=64825d4e0c31a269fdddf7b9ec281e8b&amp;imgtype=0&amp;src=http%3A%2F%2F5b0988e595225.cdn.sohucs.com%2Fimages%2F20200306%2F029c501b4d8e440ba018575e460743e3.jpeg" data-sites="wechat,weibo"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/social-share.js/dist/css/share.min.css"/><script src="https://cdn.jsdelivr.net/npm/social-share.js/dist/js/social-share.min.js"></script></div></div><div class="post-reward"><a class="reward-button button--primary button--animated"> <i class="fa fa-qrcode"></i> 打赏<div class="reward-main"><ul class="reward-all"><li class="reward-item"><img class="post-qr-code__img" src="/img/wechatMoney.jpeg" alt="微信"/><div class="post-qr-code__desc">微信</div></li><li class="reward-item"><img class="post-qr-code__img" src="/img/aliPayMoney.jpeg" alt="支付宝"/><div class="post-qr-code__desc">支付宝</div></li></ul></div></a></div><nav class="pagination_post" id="pagination"><div class="prev-post pull_left"><a href="/technology/dom_diff_two/"><img class="prev_cover" src="https://img-blog.csdnimg.cn/20201103195329140.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dlaXhpbl8zOTMyNzg4Mw==,size_16,color_FFFFFF,t_70" onerror="onerror=null;src='/img/404.jpg'"><div class="pagination-info"><div class="label">上一篇</div><div class="prev_info">深度解析DomDiff算法（二）</div></div></a></div><div class="next-post pull_right"><a href="/fashion/dunk/"><img class="next_cover" src="https://timgsa.baidu.com/timg?image&amp;quality=80&amp;size=b9999_10000&amp;sec=1592332110506&amp;di=64825d4e0c31a269fdddf7b9ec281e8b&amp;imgtype=0&amp;src=http%3A%2F%2F5b0988e595225.cdn.sohucs.com%2Fimages%2F20200306%2F029c501b4d8e440ba018575e460743e3.jpeg" onerror="onerror=null;src='/img/404.jpg'"><div class="pagination-info"><div class="label">下一篇</div><div class="next_info">本期主题-nike dunk sb &amp;&amp; nike blazer</div></div></a></div></nav><hr><div id="post-comment"><div class="comment_headling"><i class="fa fa-comments fa-fw" aria-hidden="true"></i><span> 评论</span></div><div class="vcomment" id="vcomment"></div><script src="https://cdn.jsdelivr.net/npm/valine/dist/Valine.min.js"></script><script>var requestSetting = function (from,set) {
+  var from = from
+  var setting = set.split(',').filter(function(item){
+  return from.indexOf(item) > -1
+  });
+  setting = setting.length == 0 ? from :setting;
+  return setting
+}
+
+var guestInfo = requestSetting(['nick','mail','link'],'nick,mail,link')
+var requiredFields = requestSetting(['nick','mail','link'],'nick,mail')
+
+window.valine = new Valine({
+  el:'#vcomment',
+  appId: 'Sm2gnFQPB3w3sO014Md1W2E2-gzGzoHsz',
+  appKey: 'xeziJS7AjkaAmxtKPYbrxP6N',
+  notify: false,
+  verify: false,
+  placeholder: 'Please leave your footprints',
+  avatar: 'monsterid',
+  meta: guestInfo,
+  pageSize: '10',
+  lang: 'zh-CN',
+  recordIP: false,
+  serverURLs: '',
+  emojiCDN: '',
+  emojiMaps: "",
+  enableQQ: false,
+  requiredFields: requiredFields
+});</script></div></article></main><footer id="footer" data-type="color"><div id="footer-wrap"><div class="copyright">&copy;2020 - 2021 By 小六</div><div class="footer_custom_text">前世的五百次擦肩而过，换来今世一次相遇</div></div></footer></div><section class="rightside" id="rightside"><div id="rightside-config-hide"><i class="fa fa-book" id="readmode" title="阅读模式"></i><i class="fa fa-plus" id="font_plus" title="放大字体"></i><i class="fa fa-minus" id="font_minus" title="缩小字体"></i><a class="translate_chn_to_cht" id="translateLink" href="javascript:translatePage();" title="简繁转换" target="_self">簡</a><i class="darkmode fa fa-moon-o" id="darkmode" title="夜间模式"></i></div><div id="rightside-config-show"><div id="rightside_config" title="设置"><i class="fa fa-cog" aria-hidden="true"></i></div><a id="to_comment" href="#post-comment" title="直达评论"><i class="scroll_to_comment fa fa-comments">  </i></a><i class="fa fa-list-ul close" id="mobile-toc-button" title="目录" aria-hidden="true"></i><i class="fa fa-arrow-up" id="go-up" title="回到顶部" aria-hidden="true"></i></div></section><script src="https://cdn.jsdelivr.net/npm/jquery@latest/dist/jquery.min.js"></script><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="/js/tw_cn.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/fancybox@latest/dist/jquery.fancybox.min.js"></script><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><script src="https://cdn.jsdelivr.net/npm/instant.page@3/instantpage.min.js" type="module"></script></body></html>
